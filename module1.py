@@ -5,10 +5,23 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
+# --- خطوة الترجمة للينكس (Streamlit Cloud) ---
+# بنحدد اسم الملف التنفيذي بناءً على نظام التشغيل
+if os.name == 'nt': # لو شغال على ويندوز (جهازك)
+    exe_path = "./Numerical_project.exe"
+else: # لو شغال على لينكس (السيرفر)
+    exe_path = "./my_cpp_app"
+    # لو الملف مش موجود، نترجمه فوراً
+    if not os.path.exists(exe_path):
+        with st.spinner("Compiling C++ backend on server..."):
+            # بنستخدم g++ لترجمة الكود
+            subprocess.run(["g++", "-O3", "Numerical_project.cpp", "-o", "my_cpp_app"])
+            os.chmod(exe_path, 0o755)
+
 # 1. إعدادات الصفحة
 st.set_page_config(page_title="Numerical Pro Solver", layout="centered")
 
-# 2. CSS الاحترافي (Modern Dashboard)
+# 2. CSS (نفس الستايل الشيك)
 st.markdown("""
     <style>
     .main { background-color: #0f1116; }
@@ -36,7 +49,6 @@ for i, (label, m_name) in enumerate(methods):
             st.session_state.method = m_name
             st.rerun()
 
-
 st.divider()
 
 # منطقة المدخلات
@@ -61,16 +73,14 @@ else:
 
 # زر الحساب والرسم
 if st.button("🚀 Run Analysis", use_container_width=True):
-    exe = "./Numerical_project.exe"
-    if os.path.exists(exe):
-        # التأكد من صحة عدد مدخلات جاوس قبل الإرسال
+    if os.path.exists(exe_path):
         if method == "Gauss-Seidel":
             if len(a_mat.split()) + len(b_vec.split()) != n*n + n:
-                st.error(f"❌ Input Mismatch: Check matrix A and vector B elements.")
+                st.error(f"❌ Input Mismatch.")
                 st.stop()
 
         with st.spinner('Calculating...'):
-            res = subprocess.run([exe] + args, capture_output=True, text=True, encoding='utf-8')
+            res = subprocess.run([exe_path] + args, capture_output=True, text=True, encoding='utf-8')
             raw_output = res.stdout.strip()
             
             if raw_output:
@@ -84,47 +94,33 @@ if st.button("🚀 Run Analysis", use_container_width=True):
                     if method in ["Bisection", "Newton"]:
                         df = pd.DataFrame(data, columns=["Iteration", "x_Value", "f(x)"])
                         final_root = df["x_Value"].iloc[-1]
-                        
-                        # المربع الشيك للنتيجة
                         st.markdown(f'<div class="result-container"><div class="result-title">✅ Solution Found:</div><div class="var-row"><span class="var-name">Root</span><span class="var-value">= {final_root}</span></div></div>', unsafe_allow_html=True)
-                        
                         st.subheader("📋 Iteration Steps")
                         st.dataframe(df, use_container_width=True)
-
-                        # --- الرسم البياني "التحفة" ---
                         try:
                             st.subheader("📈 Visualization")
                             x_plot = np.linspace(-10, 10, 400)
                             y_plot = [eval(func_input.replace("^", "**"), {"x": xi, "np": np, "sin": np.sin, "cos": np.cos, "exp": np.exp, "sqrt": np.sqrt}) for xi in x_plot]
-                            
                             fig, ax = plt.subplots(figsize=(10, 4))
-                            ax.plot(x_plot, y_plot, color='#58a6ff', linewidth=2, label=f'f(x) = {func_input}')
+                            ax.plot(x_plot, y_plot, color='#58a6ff', linewidth=2)
                             ax.axhline(0, color='white', linewidth=1)
-                            ax.axvline(0, color='white', linewidth=1)
-                            
                             root_f = float(final_root)
-                            ax.scatter([root_f], [0], color='red', s=150, zorder=5, label=f'Root ≈ {root_f:.4f}')
-                            
+                            ax.scatter([root_f], [0], color='red', s=150, zorder=5)
                             ax.set_facecolor('#0f1116'); fig.patch.set_facecolor('#0f1116')
                             ax.tick_params(colors='white')
-                            ax.grid(True, linestyle='--', alpha=0.2)
-                            ax.legend()
                             st.pyplot(fig)
-                        except: st.warning("Visual not available for this equation.")
+                        except: st.warning("Visual not available.")
                     
-                    else: # Gauss-Seidel التنسيق المظبوط
+                    else:
                         df = pd.DataFrame(data, columns=["Iteration", "Raw_Values"])
                         names = [n.strip() for n in var_names_str.split(",")]
                         def fmt(s): return " , ".join([f"{names[i] if i<len(names) else f'x{i+1}'}={v}" for i,v in enumerate(s.split())])
-                        
                         df["Solution"] = df["Raw_Values"].apply(fmt)
                         st.subheader("📋 Gauss-Seidel Steps")
                         st.dataframe(df[["Iteration", "Solution"]], use_container_width=True)
-                        
                         f_res = fmt(df["Raw_Values"].iloc[-1]).replace(" , ", "  |  ")
                         st.markdown(f'<div class="result-container"><div class="result-title">✅ System Solution:</div><div style="font-size:20px; color:#79c0ff; font-family:monospace;">{f_res}</div></div>', unsafe_allow_html=True)
             else:
-                st.error("Engine Error: Check your Matrix values (Diagonal Dominance).")
-                if res.stderr: st.warning(f"Technical: {res.stderr}")
+                st.error("Engine Error.")
     else:
-        st.error("EXE file missing!")
+        st.error("C++ Executable could not be created/found.")
